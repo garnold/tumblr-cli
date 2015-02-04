@@ -1,0 +1,131 @@
+#!/usr/bin/php
+<?php
+
+// TODO fixme
+date_default_timezone_set('US/Central');
+
+define('TUMBLR_CONFIG', $_SERVER['HOME'] . DIRECTORY_SEPARATOR . '.tumblr' . DIRECTORY_SEPARATOR . 'config');
+
+require 'vendor/autoload.php';
+
+$options = array_merge(
+    array('profile' => 'default'), // defaults
+    options(array('profile:', 'latest')) // valid options
+);
+$profile = $options['profile'];
+
+// tumblr --profile NAME configure CONSUMER-KEY CONSUMER-SECRET
+if (isset($options['configure'])) {
+    list($consumerKey, $consumerSecret) = $options['configure'];
+    exit(configure($profile, $consumerKey, $consumerSecret));
+}
+
+$config = json_decode(file_get_contents(TUMBLR_CONFIG), true);
+$config = $config[$profile];
+
+// tumblr [--profile NAME] sync tumblr://BLOG/ PATH-PATTERN
+if (isset($options['sync'])) {
+    list($source, $target) = $options['sync'];
+    exit(sync($source, $target, $options, $config));
+}
+else {
+    exit(usage());
+}
+
+function options($valid) {
+    global $argv;
+    
+    $options = getopt('', $valid);
+    $command = array_values(array_filter(array_slice($argv, 1), function($arg) use ($options) {
+        return !array_key_exists(ltrim($arg, '-'), $options) && !in_array($arg, $options);
+    }));
+    $options[$command[0]] = array_slice($command, 1);
+    
+    return $options;
+}
+
+function configure($profile, $consumerKey, $consumerSecret) {
+    $profile = $profile;
+    
+    $config = @json_decode(file_get_contents(TUMBLR_CONFIG), true);
+    $config[$profile]['consumer-key'] = $consumerKey;
+    $config[$profile]['consumer-secret'] = $consumerSecret;
+    
+    @mkdir(dirname(TUMBLR_CONFIG), 0700, true);
+    file_put_contents(TUMBLR_CONFIG, json_encode($config));
+}
+
+function sync($source, $target, $options, $config) {
+    parse_url($source, PHP_URL_SCHEME) == 'tumblr' or die("Only tumblr:// sources are supported\n");
+    
+    $blog = parse_url($source, PHP_URL_HOST);
+    $path = $target;
+
+    $client = new Tumblr\API\Client($config['consumer-key'], $config['consumer-secret']);
+    $info = $client->getBlogInfo($blog);
+
+    for ($offset = 0; $offset <= $info->blog->posts; $offset += 20) {
+        $posts = $client->getBlogPosts($blog, array('offset' => $offset));
+
+        for ($j = 0; $j < count($posts->posts); $j++) {
+            $post = $posts->posts[$j];
+            $type = $post->type;
+            $id = $post->id;
+            $timestamp = $post->timestamp;
+
+            if ($type == 'photo') {
+                for ($k = 0; $k < count($post->photos); $k++) {
+                    $photo = $post->photos[$k];
+                    $url = $photo->original_size->url;
+                    $file = mkfile($path, $id, $timestamp, $url);
+
+                    download($url, $file, $timestamp);
+                }
+            }
+            else if ($type == 'video') {
+                $url = $post->video_url;
+                $file = mkfile($path, $id, $timestamp, $url);
+
+                download($url, $file, $timestamp);
+            }
+            else {
+                echo("Skipping $type post\n");
+            }
+        }
+    
+        if (isset($options['latest'])) {
+            break;
+        }
+    }
+}
+
+
+function mkfile($path, $id, $timestamp, $url) {
+    $filePart = basename(parse_url($url, PHP_URL_PATH));
+    return realpath(mkpath($path, $timestamp) . DIRECTORY_SEPARATOR . $id . '-' . $filePart);
+}
+
+function mkpath($path, $timestamp) {
+    if (preg_match('/\{(.+)\}/', $path, $matches)) {
+        $format = $matches[1];
+        return str_replace("{" . $format . "}", date($format, $timestamp), $path);
+    }
+    else {
+        return $path;
+    }
+}
+
+function download($url, $file, $timestamp) {
+    if (!is_file($file) || filemtime($file) < $timestamp) {
+        $dir = dirname($file);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        echo("Downloading $url to $file\n");
+        file_put_contents($file, fopen($url, 'r'));
+        touch($file, $timestamp);
+    }
+    else {
+        echo("$file is up to date\n");
+    }
+}
