@@ -102,7 +102,7 @@ function sync($source, $target, $options, $config) {
 
 function mkfile($path, $id, $timestamp, $url) {
     $filePart = basename(parse_url($url, PHP_URL_PATH));
-    return realpath(mkpath($path, $timestamp) . DIRECTORY_SEPARATOR . $id . '-' . $filePart);
+    return mkpath($path, $timestamp) . DIRECTORY_SEPARATOR . $id . '-' . $filePart;
 }
 
 function mkpath($path, $timestamp) {
