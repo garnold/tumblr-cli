@@ -10,11 +10,11 @@ require 'vendor/autoload.php';
 
 $options = array_merge(
     array('profile' => 'default'), // defaults
-    options(array('profile:', 'latest')) // valid options
+    options(array('profile:', 'all', 'silent')) // valid options
 );
 $profile = $options['profile'];
 
-// tumblr --profile NAME configure CONSUMER-KEY CONSUMER-SECRET
+// tumblr [--profile NAME] [--silent] configure CONSUMER-KEY CONSUMER-SECRET
 if (isset($options['configure'])) {
     list($consumerKey, $consumerSecret) = $options['configure'];
     exit(configure($profile, $consumerKey, $consumerSecret));
@@ -23,10 +23,10 @@ if (isset($options['configure'])) {
 $config = json_decode(file_get_contents(TUMBLR_CONFIG), true);
 $config = $config[$profile];
 
-// tumblr [--profile NAME] sync tumblr://BLOG/ PATH-PATTERN
+// tumblr [--profile NAME] [--all] [--silent] sync tumblr://BLOG/ PATH-PATTERN
 if (isset($options['sync'])) {
     list($source, $target) = $options['sync'];
-    exit(sync($source, $target, $options, $config));
+    exit(sync($options, $config, $source, $target));
 }
 else {
     exit(usage());
@@ -45,8 +45,6 @@ function options($valid) {
 }
 
 function configure($profile, $consumerKey, $consumerSecret) {
-    $profile = $profile;
-    
     $config = @json_decode(file_get_contents(TUMBLR_CONFIG), true);
     $config[$profile]['consumer-key'] = $consumerKey;
     $config[$profile]['consumer-secret'] = $consumerSecret;
@@ -55,7 +53,7 @@ function configure($profile, $consumerKey, $consumerSecret) {
     file_put_contents(TUMBLR_CONFIG, json_encode($config));
 }
 
-function sync($source, $target, $options, $config) {
+function sync($options, $config, $source, $target) {
     parse_url($source, PHP_URL_SCHEME) == 'tumblr' or die("Only tumblr:// sources are supported\n");
     
     $blog = parse_url($source, PHP_URL_HOST);
@@ -79,26 +77,27 @@ function sync($source, $target, $options, $config) {
                     $url = $photo->original_size->url;
                     $file = mkfile($path, $id, $timestamp, $url);
 
-                    download($url, $file, $timestamp);
+                    download($options, $url, $file, $timestamp);
                 }
             }
             else if ($type == 'video') {
                 $url = $post->video_url;
                 $file = mkfile($path, $id, $timestamp, $url);
 
-                download($url, $file, $timestamp);
+                download($options, $url, $file, $timestamp);
             }
             else {
+              if (!isset($options['silent'])) {
                 echo("Skipping $type post\n");
+              }
             }
         }
     
-        if (isset($options['latest'])) {
+        if (!isset($options['all'])) {
             break;
         }
     }
 }
-
 
 function mkfile($path, $id, $timestamp, $url) {
     $filePart = basename(parse_url($url, PHP_URL_PATH));
@@ -115,7 +114,7 @@ function mkpath($path, $timestamp) {
     }
 }
 
-function download($url, $file, $timestamp) {
+function download($options, $url, $file, $timestamp) {
     if (!is_file($file) || filemtime($file) < $timestamp) {
         $dir = dirname($file);
         if (!is_dir($dir)) {
@@ -126,6 +125,8 @@ function download($url, $file, $timestamp) {
         touch($file, $timestamp);
     }
     else {
-        echo("$file is up to date\n");
+        if (!isset($options['silent'])) {
+          echo("$file is up to date\n");
+        }
     }
 }
