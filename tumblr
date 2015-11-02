@@ -77,14 +77,24 @@ function sync($options, $config, $source, $target) {
                     $url = $photo->original_size->url;
                     $file = mkfile($path, $id, $timestamp, $url);
 
-                    download($options, $url, $file, $timestamp);
+                    save($options, fopen($url, 'r'), $file, $timestamp);
                 }
             }
             else if ($type == 'video') {
                 $url = $post->video_url;
                 $file = mkfile($path, $id, $timestamp, $url);
 
-                download($options, $url, $file, $timestamp);
+                save($options, fopen($url, 'r'), $file, $timestamp);
+            }
+            else if ($type == 'text') {
+                $url = $post->post_url;
+                $file = mkfile($path, $id, $timestamp, $url) . '.md';
+
+                $title = $post->title;
+                $body = $post->body;
+                $data = $title . "\n" . str_repeat('=', strlen($title)) . "\n\n" . $body;
+
+                save($options, $data, $file, $timestamp);
             }
             else {
               if (!isset($options['silent'])) {
@@ -114,14 +124,16 @@ function mkpath($path, $timestamp) {
     }
 }
 
-function download($options, $url, $file, $timestamp) {
+function save($options, $data, $file, $timestamp) {
     if (!is_file($file) || filemtime($file) < $timestamp) {
         $dir = dirname($file);
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
-        echo("Downloading $url to $file\n");
-        file_put_contents($file, fopen($url, 'r'));
+        if (!isset($options['silent'])) {
+            echo("Writing post to $file\n");
+        }
+        file_put_contents($file, $data);
         touch($file, $timestamp);
     }
     else {
