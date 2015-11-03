@@ -131,7 +131,7 @@ function save($options, $data, $file, $timestamp) {
             mkdir($dir, 0755, true);
         }
         if (!isset($options['silent'])) {
-            echo("Writing post to $file\n");
+            echo("Saving post to $file\n");
         }
         file_put_contents($file, $data);
         touch($file, $timestamp);
